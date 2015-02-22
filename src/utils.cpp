@@ -4,56 +4,12 @@
 // will result in directive conflict with boost
 using namespace boost::filesystem;	
 
-void extractImageFromVideo(string input_dir, string output_dir);
 void scanDirForInputFiles(const string& input_dir, const vector<string>& ext_list, vector<string>& out_filename_list);
+bool loadImg(const string imgFile, Mat& out_img);
+bool loadLdmks(const string ldmkFile, vector<Point2f>& out_imgPts);
+void writeLdmks(const string filename, const vector<Point2f>& pts);
 
 //==============================================================
-
-void extractImageFromVideo(string input_dir, string output_dir)
-{
-	string vidExt = ".mp4";
-	string imgExt = ".jpg";
-	vector<string> ext_list;
-	vector<string> stem_list;
-
-	ext_list.push_back(vidExt);	
-	scanDirForInputFiles(input_dir, ext_list, stem_list);
-
-	for(int i=0; i<stem_list.size(); i++) {
-		path vidFile = input_dir/(stem_list[i]+vidExt);
-
-		VideoCapture vid(vidFile.string());
-		if(!vid.isOpened()) {
-			printf("** error: failed to open file %s\n", vidFile.string().c_str());
-			continue;
-		}
-		printf("processing file %s\n", vidFile);
-
-		// create an output directory
-		path outDir = path(output_dir)/stem_list[i];
-		create_directory(outDir);
-		Mat img;
-		int frameId = 0;
-		int maxFrames = 9999;
-
-		while(vid.read(img) && frameId <= maxFrames) {
-			char frameId_str[10];
-			sprintf_s(frameId_str, "%04d", frameId++);
-
-			// rotate by 90 degree CW
-			Mat rotatedImg;
-			flip(img, img, 0);
-			transpose(img, rotatedImg);
-
-			// write grabbed frame to file
-			string outFile = (outDir/("frame_"+string(frameId_str)+".jpg")).string(); 
-			printf("out to %s\n", outFile);
-			imwrite(outFile, rotatedImg);
-		}
-
-		
-	}
-}
 
 /*
 	scan input directory for input files with given extensions
@@ -88,4 +44,71 @@ void scanDirForInputFiles(const string& input_dir, const vector<string>& ext_lis
 			}
 		}
 	}
+}
+
+/*
+load image into cv::Mat
+*/
+bool loadImg(const string imgFile, Mat& out_img)
+{
+	out_img = imread(imgFile, CV_LOAD_IMAGE_COLOR);
+	if(!out_img.data) {
+		printf("Failed to load image file: %s\n", imgFile.c_str());
+		return false;
+	}
+	return true;
+}
+
+/*
+load landmark (.pts) file into a vector of cv::Point2f
+*/
+bool loadLdmks(const string ldmkFile, vector<Point2f>& out_imgPts)
+{
+	// read 2D ldmks
+	ifstream in(ldmkFile); 
+	if(!in) {
+		printf("Failed to load ldmk file: %s\n", ldmkFile.c_str());
+		return false;
+	}
+	string line;
+	getline(in, line); 
+	getline(in, line);
+	getline(in, line);
+	out_imgPts.clear();
+
+	int numInputLdmks = 68;
+	for(int i=0; i<numInputLdmks; i++) {
+		getline(in, line);
+		float x, y;
+		stringstream(line) >> x >> y;
+		Point2f pt(x, y);
+		out_imgPts.push_back(pt);
+	} 
+	in.close();
+	return true;
+}
+
+/*
+write landmarks (cv::Point2f) to .pts file
+*/
+void writeLdmks(const string filename, const vector<Point2f>& pts)
+{
+	ofstream out(filename);
+	if (!out.is_open())
+	{
+		printf("Failed to write to file: %s\n", filename.c_str());
+		return;
+	}
+
+	out << "version: 1" << endl;
+	out << "n_points:  " << pts.size() << endl;
+	out << "{" << endl;
+	
+	for(int i=0; i<(int)pts.size(); i++)
+	{
+		out << pts[i].x << " " << pts[i].y << " " << endl;
+	}
+
+	out << "}" << endl;
+	out.close();
 }
